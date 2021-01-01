@@ -8,16 +8,94 @@ class RenChessInterface:
         self.chess_app = chess_app
         self.menu_elem = None
         self.gui_theme = 'Reddit'
+        self.window = None
 
+        # Default board color is brown
+        self.sq_light_color = '#F0D9B5'
+        self.sq_dark_color = '#B58863'
+
+        # Move highlight, for brown board
+        self.move_sq_light_color = '#E8E18E'
+        self.move_sq_dark_color = '#B8AF4E'
+
+    def display_play_menu(self):
+        menu_def_play = [
+                ['&Mode', ['Neutral']],
+                ['&Game', ['&New::new_game_k',
+                        'Save to My Games::save_game_k',
+                        'Save to White Repertoire',
+                        'Save to Black Repertoire',
+                        'Resign::resign_game_k',
+                        'User Wins::user_wins_k',
+                        'User Draws::user_draws_k']],
+                ['FEN', ['Paste']],
+                ['&Engine', ['Go', 'Move Now']],
+                ['&Help', ['About']],
+        ]
+        self.menu_elem.Update(menu_def_play)
+    
     def render_square(self, image, key, location):
         """ Returns an RButton (Read Button) with image image """
         if (location[0] + location[1]) % 2:
-            color = self.chess_app.sq_dark_color  # Dark square
+            color = self.sq_dark_color  # Dark square
         else:
-            color = self.chess_app.sq_light_color
+            color = self.sq_light_color
         return sg.RButton('', image_filename=image, size=(1, 1),
                           border_width=0, button_color=('white', color),
                           pad=(0, 0), key=key)
+
+    def change_square_color(self, row, col):
+        """ 
+        Change the color of a square based on square row and col.
+        """
+        btn_sq = self.window.FindElement(key=(row, col))
+        is_dark_square = True if (row + col) % 2 else False
+        bd_sq_color = self.move_sq_dark_color if is_dark_square else \
+                      self.move_sq_light_color
+        btn_sq.Update(button_color=('white', bd_sq_color))
+
+    def select_promotion_piece(self, stm):
+        """
+        Allow user to select a piece type to promote to.
+
+        :param stm: side to move
+        :return: promoted piece, i.e QUEENW, QUEENB ...
+        """
+        piece = None
+        board_layout, row = [], []
+
+        psg_promote_board = copy.deepcopy(white_init_promote_board) if stm \
+                else copy.deepcopy(black_init_promote_board)
+
+        # Loop through board and create buttons with images        
+        for i in range(1):
+            for j in range(4):
+                piece_image = images[psg_promote_board[i][j]]
+                row.append(self.render_square(piece_image, key=(i, j),
+                                              location=(i, j)))
+
+            board_layout.append(row)
+
+        promo_window = sg.Window('{} {}'.format(APP_NAME, APP_VERSION),
+                                 board_layout,
+                                 default_button_element_size=(12, 1),
+                                 auto_size_buttons=False,
+                                 icon=ico_path[platform]['pecg'])
+
+        while True:
+            button, value = promo_window.Read(timeout=0)
+            if button is None:
+                break
+            if type(button) is tuple:
+                move_from = button
+                fr_row, fr_col = move_from
+                piece = psg_promote_board[fr_row][fr_col]
+                logging.info('promote piece: {}'.format(piece))
+                break
+
+        promo_window.Close()
+
+        return piece
 
     def create_board(self, is_user_white=True):
         """
@@ -58,20 +136,32 @@ class RenChessInterface:
 
         return board_layout
 
-    def build_game_panel_layout(self, is_user_white=True):
-        """
-        Creates all elements for the GUI, including the board layout.
-
-        :param is_user_white: if user is white, the white pieces are
-        oriented such that the white pieces are at the bottom.
-        :return: GUI layout
-        """
+    def build_main_panel_layout(self):
         sg.ChangeLookAndFeel(self.gui_theme)
         sg.SetOptions(margins=(0, 3), border_width=1)
 
-        # Define board
-        board_layout = self.create_board(is_user_white)
+        main_layout = [[sg.Button('Puzzles', key='main_puzzles')]]
+        main_page = sg.Column(main_layout, key='main_page', visible=True)        
 
+        # Define board
+        board_layout = self.create_board(True)
+        board_column = sg.Column(board_layout, key='board_column', visible=True)
+
+        game_column = sg.Column(self.build_game_panel_layout(), key='game_column', visible=True)
+        puzzle_column = sg.Column(self.build_puzzle_panel_layout(), key='puzzle_column', visible=False)
+
+        play_layout = [[board_column, game_column, puzzle_column]]
+        play_page = sg.Column(play_layout, key='play_page', visible=False)
+
+        layout = [[main_page, play_page]]
+
+        return layout
+
+    def build_game_panel_layout(self):
+        """
+        Creates interface for board control panels.
+        :return: GUI layout
+        """ 
         board_controls = [
             [sg.Text('Mode     Neutral', size=(36, 1), font=('Consolas', 10), key='_gamestatus_')],
             [sg.Text('White', size=(7, 1), font=('Consolas', 10)),
@@ -123,34 +213,45 @@ class RenChessInterface:
             [sg.Text('', key='search_info_all_k', size=(55, 1),
                      font=('Consolas', 10), relief='sunken')],
         ]
+        
+        return board_controls
 
-        board_tab = [[sg.Column(board_layout)]]
+    def build_puzzle_panel_layout(self):
+        """
+        Creates interface for playing puzzles.
+        
+        :return: GUI layout
+        """       
 
-        self.menu_elem = sg.Menu(menu_def_neutral, tearoff=False)
-
-        # White board layout, mode: Neutral
         layout = [
-                [self.menu_elem],
-                [sg.Column(board_tab), sg.Column(board_controls)]
+            [sg.Text('', size=(50, 1), font=('Consolas', 16), key='puzzle_title')],
+            [sg.Text('', size=(50, 1), font=('Consolas', 10), key='puzzle_instruction')],
+            [sg.Text('', size=(50, 1), font=('Consolas', 16), key='puzzle_comment')],
+            [sg.Table(values=[["", "", ""]], headings=["", "White", "Black"], col_widths=[3, 10, 10], auto_size_columns=False,
+                    num_rows=5, row_height=20, key='puzzle_moves')],
+            [sg.Text('', size=(50, 1), font=('Consolas', 16), key='puzzle_result')],
+            [sg.Button('Next Puzzle', disabled=True, key='puzzle_next')]
         ]
 
         return layout
 
+
     def create_default_window(self):
-        layout = self.build_game_panel_layout(True)
+        layout = self.build_main_panel_layout()
 
         # Use white layout as default window
-        w = sg.Window('{} {}'.format(APP_NAME, APP_VERSION),
-                           layout, default_button_element_size=(12, 1),
+        self.window = sg.Window('{} {}'.format(APP_NAME, APP_VERSION),
+                           layout, size=(900, 600),
+                           default_button_element_size=(12, 1),
                            auto_size_buttons=False,
                            icon=ico_path[platform]['pecg'])
-        return w
+        return self.window
 
-    def create_new_window(self, window, flip=False):
+    def create_new_window(self, flip=False):
         """ Close the window param just before turning the new window """
 
-        loc = window.CurrentLocation()
-        window.Disable()
+        loc = self.window.CurrentLocation()
+        self.window.Disable()
         if flip:
             self.chess_app.is_user_white = not self.chess_app.is_user_white
 
@@ -169,7 +270,8 @@ class RenChessInterface:
             self.update_labels_and_game_tags(w, human=self.chess_app.username)
             break
 
-        window.Close()
+        self.window.Close()
+        self.window = w
         return w
 
     def update_labels_and_game_tags(self, window, human='Human'):
@@ -186,3 +288,19 @@ class RenChessInterface:
             window.FindElement('_Black_').Update(human)
             game.headers['White'] = engine_id
             game.headers['Black'] = human
+
+    def redraw_board(self):
+        """
+        Redraw board at start and afte a move.
+
+        :param window:
+        :return:
+        """
+        for i in range(8):
+            for j in range(8):
+                color = self.sq_dark_color if (i + j) % 2 else \
+                        self.sq_light_color
+                piece_image = images[self.chess_app.psg_board[i][j]]
+                elem = self.window.FindElement(key=(i, j))
+                elem.Update(button_color=('white', color),
+                            image_filename=piece_image, )

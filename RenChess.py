@@ -52,6 +52,8 @@ import chess.polyglot
 from globals import *
 from engine import RunEngine
 from interface import RenChessInterface
+import chessGame
+import chessPuzzle
 
 class Timer:
     def __init__(self, tc_type='fischer', base=300000, inc=10000,
@@ -189,7 +191,6 @@ class RenChessApp:
         self.repertoire_file = {'white': 'pecg_white_repertoire.pgn', 'black': 'pecg_black_repertoire.pgn'}
         self.init_game()
         self.fen = None
-        self.psg_board = None
         self.engine_id_name_list = []
         self.engine_file_list = []
         self.username = 'Human'
@@ -204,18 +205,11 @@ class RenChessApp:
         self.engine_period_moves = 0
         self.engine_tc_type = 'fischer'
 
-        # Default board color is brown
-        self.sq_light_color = '#F0D9B5'
-        self.sq_dark_color = '#B58863'
-
-        # Move highlight, for brown board
-        self.move_sq_light_color = '#E8E18E'
-        self.move_sq_dark_color = '#B8AF4E'
-
         self.is_save_time_left = False
         self.is_save_user_comment = True
 
         self.interface = RenChessInterface(self)
+        self.game = None
 
     def update_game(self, mc, user_move, time_left, user_comment):
         """
@@ -831,7 +825,7 @@ class RenChessApp:
         if self.fen.endswith(' '):
             self.fen = self.fen[:-1]
 
-    def fen_to_psg_board(self, window):
+    def fen_to_psg_board(self):
         """ Update psg_board based on FEN """
         psgboard = []
 
@@ -895,198 +889,8 @@ class RenChessApp:
             old_r = r
 
         self.psg_board = psgboard
-        self.redraw_board(window)
-
-    def change_square_color(self, window, row, col):
-        """ 
-        Change the color of a square based on square row and col.
-        """
-        btn_sq = window.FindElement(key=(row, col))
-        is_dark_square = True if (row + col) % 2 else False
-        bd_sq_color = self.move_sq_dark_color if is_dark_square else \
-                      self.move_sq_light_color
-        btn_sq.Update(button_color=('white', bd_sq_color))
-
-    def relative_row(self, s, stm):
-        """
-        The board can be viewed, as white at the bottom and black at the
-        top. If stm is white the row 0 is at the bottom. If stm is black
-        row 0 is at the top.
-        :param s: square
-        :param stm: side to move
-        :return: relative row
-        """
-        return 7 - self.get_row(s) if stm else self.get_row(s)
-
-    def get_row(self, s):
-        """
-        This row is based on PySimpleGUI square mapping that is 0 at the
-        top and 7 at the bottom.
-        In contrast Python-chess square mapping is 0 at the bottom and 7
-        at the top. chess.square_rank() is a method from Python-chess that
-        returns row given square s.
-
-        :param s: square
-        :return: row
-        """
-        return 7 - chess.square_rank(s)
-
-    def get_col(self, s):
-        """ Returns col given square s """
-        return chess.square_file(s)
-
-    def redraw_board(self, window):
-        """
-        Redraw board at start and afte a move.
-
-        :param window:
-        :return:
-        """
-        for i in range(8):
-            for j in range(8):
-                color = self.sq_dark_color if (i + j) % 2 else \
-                        self.sq_light_color
-                piece_image = images[self.psg_board[i][j]]
-                elem = window.FindElement(key=(i, j))
-                elem.Update(button_color=('white', color),
-                            image_filename=piece_image, )
-
-    
-
-    def select_promotion_piece(self, stm):
-        """
-        Allow user to select a piece type to promote to.
-
-        :param stm: side to move
-        :return: promoted piece, i.e QUEENW, QUEENB ...
-        """
-        piece = None
-        board_layout, row = [], []
-
-        psg_promote_board = copy.deepcopy(white_init_promote_board) if stm \
-                else copy.deepcopy(black_init_promote_board)
-
-        # Loop through board and create buttons with images        
-        for i in range(1):
-            for j in range(4):
-                piece_image = images[psg_promote_board[i][j]]
-                row.append(self.render_square(piece_image, key=(i, j),
-                                              location=(i, j)))
-
-            board_layout.append(row)
-
-        promo_window = sg.Window('{} {}'.format(APP_NAME, APP_VERSION),
-                                 board_layout,
-                                 default_button_element_size=(12, 1),
-                                 auto_size_buttons=False,
-                                 icon=ico_path[platform]['pecg'])
-
-        while True:
-            button, value = promo_window.Read(timeout=0)
-            if button is None:
-                break
-            if type(button) is tuple:
-                move_from = button
-                fr_row, fr_col = move_from
-                piece = psg_promote_board[fr_row][fr_col]
-                logging.info('promote piece: {}'.format(piece))
-                break
-
-        promo_window.Close()
-
-        return piece
-
-    def update_rook(self, window, move):
-        """
-        Update rook location for castle move.
-
-        :param window:
-        :param move: uci move format
-        :return:
-        """
-        if move == 'e1g1':
-            fr = chess.H1
-            to = chess.F1
-            pc = ROOKW
-        elif move == 'e1c1':
-            fr = chess.A1
-            to = chess.D1
-            pc = ROOKW
-        elif move == 'e8g8':
-            fr = chess.H8
-            to = chess.F8
-            pc = ROOKB
-        elif move == 'e8c8':
-            fr = chess.A8
-            to = chess.D8
-            pc = ROOKB
-
-        self.psg_board[self.get_row(fr)][self.get_col(fr)] = BLANK
-        self.psg_board[self.get_row(to)][self.get_col(to)] = pc
-        self.redraw_board(window)
-
-    def update_ep(self, window, move, stm):
-        """
-        Update board for e.p move.
-
-        :param window:
-        :param move: python-chess format
-        :param stm: side to move
-        :return:
-        """
-        to = move.to_square
-        if stm:
-            capture_sq = to - 8
-        else:
-            capture_sq = to + 8
-
-        self.psg_board[self.get_row(capture_sq)][self.get_col(capture_sq)] = BLANK
-        self.redraw_board(window)
-
-    def get_promo_piece(self, move, stm, human):
-        """
-        Returns promotion piece.
-
-        :param move: python-chess format
-        :param stm: side to move
-        :param human: if side to move is human this is True
-        :return: promoted piece in python-chess and pythonsimplegui formats
-        """
-        # If this move is from a user, we will show a window with piece images
-        if human:
-            psg_promo = self.select_promotion_piece(stm)
-
-            # If user pressed x we set the promo to queen
-            if psg_promo is None:
-                logging.info('User did not select a promotion piece, '
-                             'set this to queen.')
-                psg_promo = QUEENW if stm else QUEENB
-
-            pyc_promo = promote_psg_to_pyc[psg_promo]
-        # Else if move is from computer
-        else:
-            pyc_promo = move.promotion  # This is from python-chess
-            if stm:
-                if pyc_promo == chess.QUEEN:
-                    psg_promo = QUEENW
-                elif pyc_promo == chess.ROOK:
-                    psg_promo = ROOKW
-                elif pyc_promo == chess.BISHOP:
-                    psg_promo = BISHOPW
-                elif pyc_promo == chess.KNIGHT:
-                    psg_promo = KNIGHTW
-            else:
-                if pyc_promo == chess.QUEEN:
-                    psg_promo = QUEENB
-                elif pyc_promo == chess.ROOK:
-                    psg_promo = ROOKB
-                elif pyc_promo == chess.BISHOP:
-                    psg_promo = BISHOPB
-                elif pyc_promo == chess.KNIGHT:
-                    psg_promo = KNIGHTB
-
-        return pyc_promo, psg_promo
-        
+        self.interface.redraw_board()    
+           
     def define_timer(self, window, name='human'):
         """
         Returns Timer object for either human or engine.
@@ -1106,12 +910,53 @@ class RenChessApp:
             
         return timer
 
-    def play_game_main_loop(self, window, engine_id_name):
-        # Change menu from Neutral to Play
-        self.interface.menu_elem.Update(menu_def_play)
+    def play_puzzle(self):
         self.psg_board = copy.deepcopy(initial_board)
-        board = chess.Board()
+        window = self.interface.window
 
+        f = open('E:\Workshop\project\RenChess\data\polgar_5334.dat', 'r')
+        context = f.readlines()
+        i = 0
+        puzzles = []
+        while i < len(context):
+            line = context[i]
+            if len(line.strip()) == 0:
+                i += 1
+            else:
+                puzzles.append([context[i].strip(), context[i+1].strip(), context[i+2].strip()])
+                i += 3
+
+        id = 0
+        while id < 10:
+            button, value = window.Read(timeout=100)
+
+            window.FindElement('_gamestatus_').Update('Mode     Play')
+            window.FindElement('_movelist_').Update(disabled=False)
+            window.FindElement('_movelist_').Update('', disabled=True)
+            self.fen = puzzles[id][1]
+            self.fen_to_psg_board()
+
+            pgn = """
+[Event "%s"]
+[Site ""]
+[Date ""]
+[Round ""]
+[White ""]
+[Black "Black"]
+[Result ""]
+[SetUp "1"]
+[FEN "%s"]
+
+%s
+            """ % (puzzles[id][0], self.fen, puzzles[id][2])
+            if chessPuzzle.Puzzle(self, self.interface, {}, pgn).run() == False:
+                return False
+            id += 1
+
+    def play_game(self):
+        # Change menu from Neutral to Play
+        self.psg_board = copy.deepcopy(initial_board)
+        window = self.interface.window
         while True:
             button, value = window.Read(timeout=100)
 
@@ -1119,773 +964,14 @@ class RenChessApp:
             window.FindElement('_movelist_').Update(disabled=False)
             window.FindElement('_movelist_').Update('', disabled=True)
 
-            start_new_game = self.play_game(window, engine_id_name, board)
+            if chessGame.Game(self, self.interface, {}).run() == False:
+                return False
             window.FindElement('_gamestatus_').Update('Mode     Neutral')
 
             self.psg_board = copy.deepcopy(initial_board)
-            self.redraw_board(window)
-            board = chess.Board()
+            self.interface.redraw_board()
             self.set_new_game()
-
-            if not start_new_game:
-                break
-
-    def play_game(self, window, engine_id_name, board):
-        """
-        User can play a game against and engine.
-
-        :param window:
-        :param engine_id_name:
-        :param board: current board position
-        :return:
-        """
-        window.FindElement('_movelist_').Update(disabled=False)
-        window.FindElement('_movelist_').Update('', disabled=True)
-
-        is_human_stm = True if self.is_user_white else False
-
-        move_state = 0
-        move_from, move_to = None, None
-        is_new_game, is_exit_game, is_exit_app = False, False, False
-
-        # Do not play immediately when stm is computer
-        is_engine_ready = True if is_human_stm else False
-
-        # For saving game
-        move_cnt = 0
-
-        is_user_resigns = False
-        is_user_wins = False
-        is_user_draws = False
-        is_search_stop_for_exit = False
-        is_search_stop_for_new_game = False
-        is_search_stop_for_neutral = False
-        is_search_stop_for_resign = False
-        is_search_stop_for_user_wins = False
-        is_search_stop_for_user_draws = False
-        is_hide_book1 = True
-        is_hide_book2 = True
-        is_hide_search_info = True
-
-        # Init timer
-        human_timer = self.define_timer(window)
-        engine_timer = self.define_timer(window, 'engine')
-
-        # Game loop
-        while not board.is_game_over(claim_draw=True):
-            moved_piece = None
-
-            # Mode: Play, Hide book 1
-            if is_hide_book1:
-                window.Element('polyglot_book1_k').Update('')
-            else:
-                # Load 2 polyglot book files        
-                ref_book1 = GuiBook(self.computer_book_file, board,
-                                    self.is_random_book)
-                all_moves, is_found = ref_book1.get_all_moves()
-                if is_found:
-                    window.Element('polyglot_book1_k').Update(all_moves)
-                else:
-                    window.Element('polyglot_book1_k').Update('no book moves')
-
-            # Mode: Play, Hide book 2
-            if is_hide_book2:
-                window.Element('polyglot_book2_k').Update('')
-            else:
-                ref_book2 = GuiBook(self.human_book_file, board,
-                                    self.is_random_book)
-                all_moves, is_found = ref_book2.get_all_moves()
-                if is_found:
-                    window.Element('polyglot_book2_k').Update(all_moves)
-                else:
-                    window.Element('polyglot_book2_k').Update('no book moves')
-
-            # Mode: Play, Stm: computer (first move), Allow user to change settings.
-            # User can start the engine by Engine->Go.
-            if not is_engine_ready:
-                window.FindElement('_gamestatus_').Update(
-                        'Mode     Play, press Engine->Go')
-                while True:
-                    button, value = window.Read(timeout=100)
-
-                    # Mode: Play, Stm: computer (first move)
-                    if button == 'New::new_game_k':
-                        is_new_game = True
-                        break
-
-                    # Mode: Play, Stm: Computer first move
-                    if button == 'Neutral':
-                        is_exit_game = True
-                        break
-
-                    if button == 'About':
-                        sg.PopupScrolled(HELP_MSG, title=BOX_TITLE)
-                        continue
-
-                    if button == 'Paste':
-                        try:
-                            self.get_fen()
-                            self.set_new_game()
-                            board = chess.Board(self.fen)
-                        except Exception:
-                            logging.exception('Error in parsing FEN from clipboard.')
-                            continue
-
-                        self.fen_to_psg_board(window)
-
-                        # If user is black and side to move is black
-                        if not self.is_user_white and not board.turn:
-                            is_human_stm = True
-                            window.FindElement('_gamestatus_').Update(
-                                'Mode     Play')
-
-                        # Elif user is black and side to move is white
-                        elif not self.is_user_white and board.turn:
-                            is_human_stm = False
-                            window.FindElement('_gamestatus_').Update(
-                                    'Mode     Play, press Engine->Go')
-
-                        # When computer is to move in the first move, don't
-                        # allow the engine to search immediately, wait for the
-                        # user to press Engine->Go menu.
-                        is_engine_ready = True if is_human_stm else False
-
-                        self.game.headers['FEN'] = self.fen
-                        break
-
-                    if button == 'Go':
-                        is_engine_ready = True
-                        break
-
-                    if button is None:
-                        logging.info('Quit app X is pressed.')
-                        is_exit_app = True
-                        break
-
-                if is_exit_app or is_exit_game or is_new_game:
-                    break
-
-            # If side to move is human
-            if is_human_stm:
-                move_state = 0
-
-                while True:
-                    button, value = window.Read(timeout=100)
-
-                    # Update elapse box in m:s format
-                    elapse_str = self.get_time_mm_ss_ms(human_timer.elapse)
-                    k = 'w_elapse_k'
-                    if not self.is_user_white:
-                        k = 'b_elapse_k'
-                    window.Element(k).Update(elapse_str)
-                    human_timer.elapse += 100
-
-                    if not is_human_stm:
-                        break
-
-                    # Mode: Play, Stm: User, Run adviser engine
-                    if button == 'Start::right_adviser_k':
-                        self.adviser_threads = self.get_engine_threads(
-                            self.adviser_id_name)
-                        self.adviser_hash = self.get_engine_hash(
-                            self.adviser_id_name)
-                        adviser_base_ms = self.adviser_movetime_sec * 1000
-                        adviser_inc_ms = 0
-
-                        search = RunEngine(self.queue, self.engine_config_file,
-                            self.adviser_path_and_file, self.adviser_id_name,
-                            self.max_depth, adviser_base_ms, adviser_inc_ms,
-                                           tc_type='timepermove',
-                                           period_moves=0,
-                                           is_stream_search_info=True)
-                        search.get_board(board)
-                        search.daemon = True
-                        search.start()
-
-                        while True:
-                            button, value = window.Read(timeout=10)
-
-                            if button == 'Stop::right_adviser_k':
-                                search.stop()
-
-                            # Exit app while adviser is thinking                    
-                            if button is None:
-                                search.stop()                                
-                                is_search_stop_for_exit = True
-                            try:
-                                msg = self.queue.get_nowait()
-                                if 'pv' in msg:
-                                    # Reformat msg, remove the word pv at the end
-                                    msg_line = ' '.join(msg.split()[0:-1])
-                                    window.Element('advise_info_k').Update(msg_line)
-                            except Exception:
-                                continue
-
-                            if 'bestmove' in msg:
-                                # bestmove can be None so we do try/except
-                                try:
-                                    # Shorten msg line to 3 ply moves
-                                    msg_line = ' '.join(msg_line.split()[0:3])
-                                    msg_line += ' - ' + self.adviser_id_name
-                                    window.Element('advise_info_k').Update(msg_line)
-                                except Exception:
-                                    logging.exception('Adviser engine error')
-                                    sg.Popup('Adviser engine {} error.\n'.format(
-                                            self.adviser_id_name) + \
-                                            'It is better to change this engine.\n' +
-                                            'Change to Neutral mode first.',
-                                            icon=ico_path[platform]['pecg'],
-                                            title=BOX_TITLE)
-                                break
-
-                        search.join()
-                        search.quit_engine()
-                        break
-
-                    # Mode: Play, Stm: user
-                    if button == 'Show::right_search_info_k':
-                        is_hide_search_info = False
-                        break
-
-                    # Mode: Play, Stm: user
-                    if button == 'Hide::right_search_info_k':
-                        is_hide_search_info = True
-                        window.Element('search_info_all_k').Update('')
-                        break
-
-                    # Mode: Play, Stm: user
-                    if button == 'Show::right_book1_k':
-                        is_hide_book1 = False
-                        break
-
-                    # Mode: Play, Stm: user
-                    if button == 'Hide::right_book1_k':
-                        is_hide_book1 = True
-                        break
-
-                    # Mode: Play, Stm: user
-                    if button == 'Show::right_book2_k':
-                        is_hide_book2 = False
-                        break
-
-                    # Mode: Play, Stm: user
-                    if button == 'Hide::right_book2_k':
-                        is_hide_book2 = True
-                        break
-
-                    if button is None:
-                        logging.info('Quit app X is pressed.')
-                        is_exit_app = True
-                        break
-
-                    if is_search_stop_for_exit:
-                        is_exit_app = True
-                        break
-
-                    # Mode: Play, Stm: User
-                    if button == 'New::new_game_k' or is_search_stop_for_new_game:
-                        is_new_game = True
-                        self.clear_elements(window)
-                        break
-
-                    if button == 'Save to My Games::save_game_k':
-                        logging.info('Saving game manually')
-                        with open(self.my_games, mode = 'a+') as f:
-                            self.game.headers['Event'] = 'My Games'
-                            f.write('{}\n\n'.format(self.game))
-                        break
-
-                    # Mode: Play, Stm: user
-                    if button == 'Save to White Repertoire':
-                        with open(self.repertoire_file['white'], mode = 'a+') as f:
-                            self.game.headers['Event'] = 'White Repertoire'
-                            f.write('{}\n\n'.format(self.game))
-                        break
-
-                    # Mode: Play, Stm: user
-                    if button == 'Save to Black Repertoire':
-                        with open(self.repertoire_file['black'], mode = 'a+') as f:
-                            self.game.headers['Event'] = 'Black Repertoire'
-                            f.write('{}\n\n'.format(self.game))
-                        break
-
-                    # Mode: Play, stm: User
-                    if button == 'Resign::resign_game_k' or is_search_stop_for_resign:
-                        logging.info('User resigns')
-
-                        # Verify resign
-                        reply = sg.Popup('Do you really want to resign?',
-                                         button_type=sg.POPUP_BUTTONS_YES_NO,
-                                         title=BOX_TITLE,
-                                         icon=ico_path[platform]['pecg'])
-                        if reply == 'Yes':
-                            is_user_resigns = True
-                            break
-                        else:
-                            if is_search_stop_for_resign:
-                                is_search_stop_for_resign = False
-                            continue
-
-                    # Mode: Play, stm: User
-                    if button == 'User Wins::user_wins_k' or is_search_stop_for_user_wins:
-                        logging.info('User wins by adjudication')
-                        is_user_wins = True
-                        break
-
-                    # Mode: Play, stm: User
-                    if button == 'User Draws::user_draws_k' or is_search_stop_for_user_draws:
-                        logging.info('User draws by adjudication')
-                        is_user_draws = True
-                        break
-
-                    # Mode: Play, Stm: User
-                    if button == 'Neutral' or is_search_stop_for_neutral:
-                        is_exit_game = True
-                        self.clear_elements(window)
-                        break
-
-                    # Mode: Play, stm: User
-                    if button == 'About':
-                        sg.PopupScrolled(HELP_MSG, title=BOX_TITLE,)
-                        break
-
-                    # Mode: Play, stm: User
-                    if button == 'Go':
-                        if is_human_stm:
-                            is_human_stm = False
-                        else:
-                            is_human_stm = True
-                        is_engine_ready = True
-                        window.FindElement('_gamestatus_').Update(
-                                'Mode     Play, Engine is thinking ...')
-                        break
-
-                    # Mode: Play, stm: User
-                    if button == 'Paste':
-                        # Pasting fen is only allowed before the game starts.
-                        if len(self.game.variations):
-                            sg.Popup('Press Game->New then paste your fen.',
-                                     title='Mode Play')
-                            continue
-                        try:
-                            self.get_fen()
-                            self.set_new_game()
-                            board = chess.Board(self.fen)
-                        except Exception:
-                            logging.exception('Error in parsing FEN from clipboard.')
-                            continue
-
-                        self.fen_to_psg_board(window)
-
-                        is_human_stm = True if board.turn else False
-                        is_engine_ready = True if is_human_stm else False
-
-                        window.FindElement('_gamestatus_').Update(
-                                'Mode     Play, side: {}'.format(
-                                        'white' if board.turn else 'black'))
-
-                        self.game.headers['FEN'] = self.fen
-                        break
-
-                    # Mode: Play, stm: User, user starts moving
-                    if type(button) is tuple:
-                        # If fr_sq button is pressed
-                        if move_state == 0:
-                            move_from = button
-                            fr_row, fr_col = move_from
-                            piece = self.psg_board[fr_row][fr_col]  # get the move-from piece
-
-                            # Change the color of the "fr" board square
-                            self.change_square_color(window, fr_row, fr_col)
-
-                            move_state = 1
-                            moved_piece = board.piece_type_at(chess.square(fr_col, 7-fr_row))  # Pawn=1
-
-                        # Else if to_sq button is pressed
-                        elif move_state == 1:
-                            is_promote = False
-                            move_to = button
-                            to_row, to_col = move_to
-                            button_square = window.FindElement(key=(fr_row, fr_col))
-
-                            # If move is cancelled, pressing same button twice
-                            if move_to == move_from:
-                                # Restore the color of the pressed board square
-                                color = self.sq_dark_color if (to_row + to_col) % 2 else self.sq_light_color
-
-                                # Restore the color of the fr square
-                                button_square.Update(button_color=('white', color))
-                                move_state = 0
-                                continue
-
-                            # Create a move in python-chess format based from user input
-                            user_move = None
-
-                            # Get the fr_sq and to_sq of the move from user, based from this info
-                            # we will create a move based from python-chess format.
-                            # Note chess.square() and chess.Move() are from python-chess module
-                            fr_row, fr_col = move_from
-                            fr_sq = chess.square(fr_col, 7-fr_row)
-                            to_sq = chess.square(to_col, 7-to_row)
-
-                            # If user move is a promote
-                            if self.relative_row(to_sq, board.turn) == RANK_8 and \
-                                    moved_piece == chess.PAWN:
-                                is_promote = True
-                                pyc_promo, psg_promo = self.get_promo_piece(
-                                        user_move, board.turn, True)
-                                user_move = chess.Move(fr_sq, to_sq, promotion=pyc_promo)
-                            else:
-                                user_move = chess.Move(fr_sq, to_sq)
-
-                            # Check if user move is legal
-                            if user_move in board.legal_moves:
-                                # Update rook location if this is a castle move
-                                if board.is_castling(user_move):
-                                    self.update_rook(window, str(user_move))
-
-                                # Update board if e.p capture
-                                elif board.is_en_passant(user_move):
-                                    self.update_ep(user_move, board.turn)
-
-                                # Empty the board from_square, applied to any types of move
-                                self.psg_board[move_from[0]][move_from[1]] = BLANK
-
-                                # Update board to_square if move is a promotion
-                                if is_promote:
-                                    self.psg_board[to_row][to_col] = psg_promo
-                                # Update the to_square if not a promote move
-                                else:
-                                    # Place piece in the move to_square
-                                    self.psg_board[to_row][to_col] = piece
-
-                                self.redraw_board(window)
-
-                                board.push(user_move)
-                                move_cnt += 1
-
-                                # Update clock, reset elapse to zero
-                                human_timer.update_base()
-
-                                # Update game, move from human
-                                time_left = human_timer.base
-                                user_comment = value['comment_k']
-                                self.update_game(move_cnt, user_move, time_left, user_comment)
-
-                                window.FindElement('_movelist_').Update(disabled=False)
-                                window.FindElement('_movelist_').Update('')
-                                window.FindElement('_movelist_').Update(
-                                    self.game.variations[0], append=True, disabled=True)
-
-                                # Clear comment and engine search box
-                                window.FindElement('comment_k').Update('')
-                                window.Element('search_info_all_k').Update('')
-
-                                # Change the color of the "fr" and "to" board squares
-                                self.change_square_color(window, fr_row, fr_col)
-                                self.change_square_color(window, to_row, to_col)
-
-                                is_human_stm = not is_human_stm
-                                # Human has done its move
-
-                                k1 = 'w_elapse_k'
-                                k2 = 'w_base_time_k'
-                                if not self.is_user_white:
-                                    k1 = 'b_elapse_k'
-                                    k2 = 'b_base_time_k'
-
-                                # Update elapse box
-                                elapse_str = self.get_time_mm_ss_ms(
-                                    human_timer.elapse)
-                                window.Element(k1).Update(elapse_str)
-
-                                # Update remaining time box
-                                elapse_str = self.get_time_h_mm_ss(
-                                    human_timer.base)
-                                window.Element(k2).Update(elapse_str)
-
-                                window.Element('advise_info_k').Update('')
-
-                            # Else if move is illegal
-                            else:
-                                move_state = 0
-                                color = self.sq_dark_color \
-                                    if (move_from[0] + move_from[1]) % 2 else self.sq_light_color
-
-                                # Restore the color of the fr square
-                                button_square.Update(button_color=('white', color))
-                                continue
-
-                if is_new_game or is_exit_game or is_exit_app or \
-                    is_user_resigns or is_user_wins or is_user_draws:
-                    break
-
-            # Else if side to move is not human
-            elif not is_human_stm and is_engine_ready:
-                is_promote = False
-                best_move = None
-                is_book_from_gui = True
-
-                # Mode: Play, stm: Computer, If using gui book
-                if self.is_use_gui_book and move_cnt <= self.max_book_ply:
-                    # Verify presence of a book file
-                    if os.path.isfile(self.gui_book_file):
-                        gui_book = GuiBook(self.gui_book_file, board, self.is_random_book)
-                        best_move = gui_book.get_book_move()
-                        logging.info('Book move is {}.'.format(best_move))
-                    else:
-                        logging.warning('GUI book is missing.')
-
-                # Mode: Play, stm: Computer, If there is no book move,
-                # let the engine search the best move
-                if best_move is None:
-                    search = RunEngine(self.queue, self.engine_config_file,
-                        self.opp_path_and_file, self.opp_id_name,
-                        self.max_depth, engine_timer.base,
-                                       engine_timer.inc,
-                                       tc_type=engine_timer.tc_type,
-                                       period_moves=board.fullmove_number)
-                    search.get_board(board)
-                    search.daemon = True
-                    search.start()
-                    window.FindElement('_gamestatus_').Update(
-                            'Mode     Play, Engine is thinking ...')
-
-                    while True:
-                        button, value = window.Read(timeout=100)
-
-                        # Update elapse box in m:s format
-                        elapse_str = self.get_time_mm_ss_ms(engine_timer.elapse)
-                        k = 'b_elapse_k'
-                        if not self.is_user_white:
-                            k = 'w_elapse_k'
-                        window.Element(k).Update(elapse_str)
-                        engine_timer.elapse += 100
-
-                        # Hide/Unhide engine searching info while engine is thinking
-                        if button == 'Show::right_search_info_k':
-                            is_hide_search_info = False
-
-                        if button == 'Hide::right_search_info_k':
-                            is_hide_search_info = True
-                            window.Element('search_info_all_k').Update('')
-
-                        # Show book 1 while engine is searching
-                        if button == 'Show::right_book1_k':
-                            is_hide_book1 = False
-                            ref_book1 = GuiBook(self.computer_book_file,
-                                                board, self.is_random_book)
-                            all_moves, is_found = ref_book1.get_all_moves()
-                            if is_found:
-                                window.Element('polyglot_book1_k').Update(all_moves)
-                            else:
-                                window.Element('polyglot_book1_k').Update('no book moves')
-
-                        # Hide book 1 while engine is searching
-                        if button == 'Hide::right_book1_k':
-                            is_hide_book1 = True
-                            window.Element('polyglot_book1_k').Update('')
-
-                        # Show book 2 while engine is searching
-                        if button == 'Show::right_book2_k':
-                            is_hide_book2 = False
-                            ref_book2 = GuiBook(self.human_book_file, board,
-                                                self.is_random_book)
-                            all_moves, is_found = ref_book2.get_all_moves()
-                            if is_found:
-                                window.Element('polyglot_book2_k').Update(all_moves)
-                            else:
-                                window.Element('polyglot_book2_k').Update('no book moves')
-
-                        # Hide book 2 while engine is searching
-                        if button == 'Hide::right_book2_k':
-                            is_hide_book2 = True
-                            window.Element('polyglot_book2_k').Update('')
-
-                        # Exit app while engine is thinking                    
-                        if button is None:
-                            search.stop()
-                            is_search_stop_for_exit = True
-
-                        # Forced engine to move now and create a new game
-                        if button == 'New::new_game_k':
-                            search.stop()
-                            is_search_stop_for_new_game = True
-
-                        # Forced engine to move now
-                        if button == 'Move Now':
-                            search.stop()
-
-                        # Mode: Play, Computer is thinking
-                        if button == 'Neutral':
-                            search.stop()
-                            is_search_stop_for_neutral = True
-
-                        if button == 'Resign::resign_game_k':
-                            search.stop()
-                            is_search_stop_for_resign = True
-
-                        if button == 'User Wins::user_wins_k':
-                            search.stop()
-                            is_search_stop_for_user_wins = True
-
-                        if button == 'User Draws::user_draws_k':
-                            search.stop()
-                            is_search_stop_for_user_draws = True
-
-                        # Get the engine search info and display it in GUI text boxes
-                        try:
-                            msg = self.queue.get_nowait()
-                        except Exception:
-                            continue
-
-                        msg_str = str(msg)
-                        best_move = self.update_text_box(window, msg, is_hide_search_info)
-                        if 'bestmove' in msg_str:
-                            logging.info('engine msg: {}'.format(msg_str))
-                            break
-
-                    search.join()
-                    search.quit_engine()
-                    is_book_from_gui = False
-
-                # If engine failed to send a legal move
-                if best_move is None:
-                    break
-
-                # Update board with computer move
-                move_str = str(best_move)
-                fr_col = ord(move_str[0]) - ord('a')
-                fr_row = 8 - int(move_str[1])
-                to_col = ord(move_str[2]) - ord('a')
-                to_row = 8 - int(move_str[3])
-
-                piece = self.psg_board[fr_row][fr_col]
-                self.psg_board[fr_row][fr_col] = BLANK
-
-                # Update rook location if this is a castle move
-                if board.is_castling(best_move):
-                    self.update_rook(window, move_str)
-
-                # Update board if e.p capture
-                elif board.is_en_passant(best_move):
-                    self.update_ep(best_move, board.turn)
-
-                # Update board if move is a promotion
-                elif best_move.promotion is not None:
-                    is_promote = True
-                    _, psg_promo = self.get_promo_piece(best_move, board.turn, False)
-
-                # Update board to_square if move is a promotion
-                if is_promote:
-                    self.psg_board[to_row][to_col] = psg_promo
-                # Update the to_square if not a promote move
-                else:
-                    # Place piece in the move to_square
-                    self.psg_board[to_row][to_col] = piece
-
-                self.redraw_board(window)
-
-                board.push(best_move)
-                move_cnt += 1
-
-                # Update timer
-                engine_timer.update_base()
-
-                # Update game, move from engine
-                time_left = engine_timer.base
-                if is_book_from_gui:
-                    engine_comment = 'book'
-                else:
-                    engine_comment = ''
-                self.update_game(move_cnt, best_move, time_left, engine_comment)
-
-                window.FindElement('_movelist_').Update(disabled=False)
-                window.FindElement('_movelist_').Update('')
-                window.FindElement('_movelist_').Update(
-                    self.game.variations[0], append=True, disabled=True)
-
-                # Change the color of the "fr" and "to" board squares
-                self.change_square_color(window, fr_row, fr_col)
-                self.change_square_color(window, to_row, to_col)
-
-                is_human_stm = not is_human_stm
-                # Engine has done its move
-
-                k1 = 'b_elapse_k'
-                k2 = 'b_base_time_k'
-                if not self.is_user_white:
-                    k1 = 'w_elapse_k'
-                    k2 = 'w_base_time_k'
-
-                # Update elapse box
-                elapse_str = self.get_time_mm_ss_ms(engine_timer.elapse)
-                window.Element(k1).Update(elapse_str)
-
-                # Update remaining time box
-                elapse_str = self.get_time_h_mm_ss(engine_timer.base)
-                window.Element(k2).Update(elapse_str)
-
-                window.FindElement('_gamestatus_').Update('Mode     Play')
-
-        # Auto-save game
-        logging.info('Saving game automatically')
-        if is_user_resigns:
-            self.game.headers['Result'] = '0-1' if self.is_user_white else '1-0'
-            self.game.headers['Termination'] = '{} resigns'.format(
-                    'white' if self.is_user_white else 'black')
-        elif is_user_wins:
-            self.game.headers['Result'] = '1-0' if self.is_user_white else '0-1'
-            self.game.headers['Termination'] = 'Adjudication'
-        elif is_user_draws:
-            self.game.headers['Result'] = '1/2-1/2'
-            self.game.headers['Termination'] = 'Adjudication'
-        else:
-            self.game.headers['Result'] = board.result(claim_draw = True)
-
-        base_h = int(self.human_base_time_ms / 1000)
-        inc_h = int(self.human_inc_time_ms / 1000)
-        base_e = int(self.engine_base_time_ms / 1000)
-        inc_e = int(self.engine_inc_time_ms / 1000)
-
-        if self.is_user_white:
-            if self.human_tc_type == 'fischer':
-                self.game.headers['WhiteTimeControl'] = str(base_h) + '+' + \
-                                                        str(inc_h)
-            elif self.human_tc_type == 'delay':
-                self.game.headers['WhiteTimeControl'] = str(base_h) + '-' + \
-                                                        str(inc_h)
-            if self.engine_tc_type == 'fischer':
-                self.game.headers['BlackTimeControl'] = str(base_e) + '+' + \
-                                                        str(inc_e)
-            elif self.engine_tc_type == 'timepermove':
-                self.game.headers['BlackTimeControl'] = str(1) + '/' + str(base_e)
-        else:
-            if self.human_tc_type == 'fischer':
-                self.game.headers['BlackTimeControl'] = str(base_h) + '+' + \
-                                                        str(inc_h)
-            elif self.human_tc_type == 'delay':
-                self.game.headers['BlackTimeControl'] = str(base_h) + '-' + \
-                                                        str(inc_h)
-            if self.engine_tc_type == 'fischer':
-                self.game.headers['WhiteTimeControl'] = str(base_e) + '+' + \
-                                                        str(inc_e)
-            elif self.engine_tc_type == 'timepermove':
-                self.game.headers['WhiteTimeControl'] = str(1) + '/' + str(base_e)
-        self.save_game()
-
-        if board.is_game_over(claim_draw=True):
-            sg.Popup('Game is over.', title=BOX_TITLE,
-                     icon=ico_path[platform]['pecg'])
-
-        if is_exit_app:
-            window.Close()
-            sys.exit(0)
-
-        self.clear_elements(window)
-
-        return False if is_exit_game else is_new_game
-
+    
     def save_game(self):
         """ Save game in append mode """
         with open(self.pecg_auto_save_game, mode = 'a+') as f:
@@ -1967,12 +1053,26 @@ class RenChessApp:
         while True:
             button, value = window.Read(timeout=50)
 
+            if button == 'main_puzzles':
+                window.FindElement('main_page').Update(visible=False)                
+                window.FindElement('game_column').Update(visible=False)
+                window.FindElement('puzzle_column').Update(visible=True)
+                window.FindElement('play_page').Update(visible=True)
+                if self.play_puzzle() == False:
+                    break
+                continue
+            if button == 'main_game':
+                window.FindElement('main_page').Update(visible=False)
+                window.FindElement('game_column').Update(visible=True)
+                if self.play_game() == False:
+                    # Exit app
+                    break
+                continue
+
             # Mode: Neutral
             if button is None:
                 logging.info('Quit app from main loop, X is pressed.')
                 break
-
-            self.play_game_main_loop(window, engine_id_name)
                                                
         window.Close()
 
