@@ -161,6 +161,72 @@ class Game:
             elif pyc == chess.KNIGHT:
                 psg = KNIGHTB
         return psg
+
+    def fen_to_psg_board(self, fen):
+        """ Update psg_board based on FEN """
+        psgboard = []
+
+        # Get piece locations only to build psg board
+        pc_locations = fen.split()[0]
+
+        board = chess.BaseBoard(pc_locations)
+        old_r = None
+
+        for s in chess.SQUARES:
+            r = chess.square_rank(s)
+
+            if old_r is None:
+                piece_r = []
+            elif old_r != r:
+                psgboard.append(piece_r)
+                piece_r = []
+            elif s == 63:
+                psgboard.append(piece_r)
+
+            try:
+                pc = board.piece_at(s^56)
+            except Exception:
+                pc = None
+                logging.exception('Failed to get piece.')
+
+            if pc is not None:
+                pt = pc.piece_type
+                c = pc.color
+                if c:
+                    if pt == chess.PAWN:
+                        piece_r.append(PAWNW)
+                    elif pt == chess.KNIGHT:
+                        piece_r.append(KNIGHTW)
+                    elif pt == chess.BISHOP:
+                        piece_r.append(BISHOPW)
+                    elif pt == chess.ROOK:
+                        piece_r.append(ROOKW)
+                    elif pt == chess.QUEEN:
+                        piece_r.append(QUEENW)
+                    elif pt == chess.KING:
+                        piece_r.append(KINGW)
+                else:
+                    if pt == chess.PAWN:
+                        piece_r.append(PAWNB)
+                    elif pt == chess.KNIGHT:
+                        piece_r.append(KNIGHTB)
+                    elif pt == chess.BISHOP:
+                        piece_r.append(BISHOPB)
+                    elif pt == chess.ROOK:
+                        piece_r.append(ROOKB)
+                    elif pt == chess.QUEEN:
+                        piece_r.append(QUEENB)
+                    elif pt == chess.KING:
+                        piece_r.append(KINGB)
+
+            # Else if pc is None or square is empty
+            else:
+                piece_r.append(BLANK)
+
+            old_r = r
+
+        self.app.psg_board = psgboard
+        self.ui.redraw_board()
     
     def get_user_input(self):
         move_state = 0

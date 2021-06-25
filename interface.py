@@ -140,7 +140,10 @@ class RenChessInterface:
         sg.ChangeLookAndFeel(self.gui_theme)
         sg.SetOptions(margins=(0, 3), border_width=1)
 
-        main_layout = [[sg.Button('Puzzles', key='main_puzzles')]]
+        main_layout = [
+            [sg.Button('Puzzles', key='main_puzzles'), 
+            sg.Button('Review', key='main_review')]
+        ]
         main_page = sg.Column(main_layout, key='main_page', visible=True)        
 
         # Define board
@@ -225,16 +228,39 @@ class RenChessInterface:
 
         layout = [
             [sg.Text('', size=(50, 1), font=('Consolas', 16), key='puzzle_title')],
-            [sg.Text('', size=(50, 1), font=('Consolas', 10), key='puzzle_instruction')],
+            [sg.Text('', size=(50, 1), font=('Consolas', 12), key='puzzle_instruction')],
             [sg.Text('', size=(50, 1), font=('Consolas', 16), key='puzzle_comment')],
+            [sg.Button('Next Puzzle', disabled=True, key='puzzle_next')],
             [sg.Table(values=[["", "", ""]], headings=["", "White", "Black"], col_widths=[3, 10, 10], auto_size_columns=False,
                     num_rows=5, row_height=20, key='puzzle_moves')],
-            [sg.Text('', size=(50, 1), font=('Consolas', 16), key='puzzle_result')],
-            [sg.Button('Next Puzzle', disabled=True, key='puzzle_next')]
+            [sg.Button('Back to Main', disabled=False, key='back_to_main')]
         ]
 
         return layout
 
+    def show_puzzle_number_dialog(self):
+        puzzle_count = -1
+        win_title = 'Number of Puzzles'
+        layout = [
+            [sg.T('Number of Puzzles', size=(16, 1)),
+                sg.Input(10, key='puzzle_number', size=(8, 1))],            
+            [sg.OK(), sg.Cancel()]
+        ]
+
+        self.window.Disable()
+        w = sg.Window(win_title, layout, icon=ico_path[platform]['pecg'])
+        while True:
+            e, v = w.Read(timeout=10)
+            if e is None:
+                break
+            if e == 'Cancel':
+                break
+            if e == 'OK':
+                puzzle_count = int(v['puzzle_number'])
+                break
+        w.Close()
+        self.window.Enable()
+        return puzzle_count
 
     def create_default_window(self):
         layout = self.build_main_panel_layout()
@@ -304,3 +330,13 @@ class RenChessInterface:
                 elem = self.window.FindElement(key=(i, j))
                 elem.Update(button_color=('white', color),
                             image_filename=piece_image, )
+
+    def show_puzzle_page(self):
+        self.window['main_page'].Update(visible=False)                
+        self.window['game_column'].Update(visible=False)
+        self.window['puzzle_column'].Update(visible=True)
+        self.window['play_page'].Update(visible=True)
+
+    def show_main_page(self):                  
+        self.window['play_page'].Update(visible=False)
+        self.window['main_page'].Update(visible=True)      

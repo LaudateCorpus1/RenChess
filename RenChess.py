@@ -52,6 +52,7 @@ import chess.polyglot
 from globals import *
 from engine import RunEngine
 from interface import RenChessInterface
+from user import User
 import chessGame
 import chessPuzzle
 
@@ -189,8 +190,7 @@ class RenChessApp:
         self.pecg_auto_save_game = 'pecg_auto_save_games.pgn'
         self.my_games = 'pecg_my_games.pgn'
         self.repertoire_file = {'white': 'pecg_white_repertoire.pgn', 'black': 'pecg_black_repertoire.pgn'}
-        self.init_game()
-        self.fen = None
+        self.init_game()        
         self.engine_id_name_list = []
         self.engine_file_list = []
         self.username = 'Human'
@@ -209,6 +209,8 @@ class RenChessApp:
         self.is_save_user_comment = True
 
         self.interface = RenChessInterface(self)
+        self.user = User()
+        self.puzzle_manager = chessPuzzle.PuzzleManager(self)
         self.game = None
 
     def update_game(self, mc, user_move, time_left, user_comment):
@@ -816,80 +818,6 @@ class RenChessApp:
         window.Element('b_base_time_k').Update('')
         window.Element('w_elapse_k').Update('')
         window.Element('b_elapse_k').Update('')    
-
-    def get_fen(self):
-        """ Get fen from clipboard """
-        self.fen = pyperclip.paste()
-
-        # Remove empty char at the end of FEN
-        if self.fen.endswith(' '):
-            self.fen = self.fen[:-1]
-
-    def fen_to_psg_board(self):
-        """ Update psg_board based on FEN """
-        psgboard = []
-
-        # Get piece locations only to build psg board
-        pc_locations = self.fen.split()[0]
-
-        board = chess.BaseBoard(pc_locations)
-        old_r = None
-
-        for s in chess.SQUARES:
-            r = chess.square_rank(s)
-
-            if old_r is None:
-                piece_r = []
-            elif old_r != r:
-                psgboard.append(piece_r)
-                piece_r = []
-            elif s == 63:
-                psgboard.append(piece_r)
-
-            try:
-                pc = board.piece_at(s^56)
-            except Exception:
-                pc = None
-                logging.exception('Failed to get piece.')
-
-            if pc is not None:
-                pt = pc.piece_type
-                c = pc.color
-                if c:
-                    if pt == chess.PAWN:
-                        piece_r.append(PAWNW)
-                    elif pt == chess.KNIGHT:
-                        piece_r.append(KNIGHTW)
-                    elif pt == chess.BISHOP:
-                        piece_r.append(BISHOPW)
-                    elif pt == chess.ROOK:
-                        piece_r.append(ROOKW)
-                    elif pt == chess.QUEEN:
-                        piece_r.append(QUEENW)
-                    elif pt == chess.KING:
-                        piece_r.append(KINGW)
-                else:
-                    if pt == chess.PAWN:
-                        piece_r.append(PAWNB)
-                    elif pt == chess.KNIGHT:
-                        piece_r.append(KNIGHTB)
-                    elif pt == chess.BISHOP:
-                        piece_r.append(BISHOPB)
-                    elif pt == chess.ROOK:
-                        piece_r.append(ROOKB)
-                    elif pt == chess.QUEEN:
-                        piece_r.append(QUEENB)
-                    elif pt == chess.KING:
-                        piece_r.append(KINGB)
-
-            # Else if pc is None or square is empty
-            else:
-                piece_r.append(BLANK)
-
-            old_r = r
-
-        self.psg_board = psgboard
-        self.interface.redraw_board()    
            
     def define_timer(self, window, name='human'):
         """
@@ -908,50 +836,7 @@ class RenChessApp:
         window.Element('w_base_time_k' if is_white_base else 'b_base_time_k').Update(
                 elapse_str)
             
-        return timer
-
-    def play_puzzle(self):
-        self.psg_board = copy.deepcopy(initial_board)
-        window = self.interface.window
-
-        f = open('E:\Workshop\project\RenChess\data\polgar_5334.dat', 'r')
-        context = f.readlines()
-        i = 0
-        puzzles = []
-        while i < len(context):
-            line = context[i]
-            if len(line.strip()) == 0:
-                i += 1
-            else:
-                puzzles.append([context[i].strip(), context[i+1].strip(), context[i+2].strip()])
-                i += 3
-
-        id = 0
-        while id < 10:
-            button, value = window.Read(timeout=100)
-
-            window.FindElement('_gamestatus_').Update('Mode     Play')
-            window.FindElement('_movelist_').Update(disabled=False)
-            window.FindElement('_movelist_').Update('', disabled=True)
-            self.fen = puzzles[id][1]
-            self.fen_to_psg_board()
-
-            pgn = """
-[Event "%s"]
-[Site ""]
-[Date ""]
-[Round ""]
-[White ""]
-[Black "Black"]
-[Result ""]
-[SetUp "1"]
-[FEN "%s"]
-
-%s
-            """ % (puzzles[id][0], self.fen, puzzles[id][2])
-            if chessPuzzle.Puzzle(self, self.interface, {}, pgn).run() == False:
-                return False
-            id += 1
+        return timer    
 
     def play_game(self):
         # Change menu from Neutral to Play
@@ -1054,12 +939,20 @@ class RenChessApp:
             button, value = window.Read(timeout=50)
 
             if button == 'main_puzzles':
-                window.FindElement('main_page').Update(visible=False)                
-                window.FindElement('game_column').Update(visible=False)
-                window.FindElement('puzzle_column').Update(visible=True)
-                window.FindElement('play_page').Update(visible=True)
-                if self.play_puzzle() == False:
-                    break
+                puzzle_count = self.interface.show_puzzle_number_dialog()
+                if puzzle_count > 0:
+                    self.interface.show_puzzle_page()
+                    if self.puzzle_manager.play_puzzle(puzzle_count) == False:
+                        break
+                self.interface.show_main_page()
+                continue
+            if button == 'main_review':
+                review_items = self.user.get_review_items()
+                if len(review_items) > 0:
+                    self.interface.show_puzzle_page()
+                    if self.puzzle_manager.review_puzzles(review_items) == False:
+                        break
+                self.interface.show_main_page()
                 continue
             if button == 'main_game':
                 window.FindElement('main_page').Update(visible=False)
